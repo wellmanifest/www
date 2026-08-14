@@ -1,0 +1,19 @@
+{
+  "name": "wellmanifest-projects-landing",
+  "version": "1.0.0",
+  "description": "Landing page dla projektów WellManifest z codziennym cache z GitHub API, diagramem zależności i tagami",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx -y serve . -l 3000",
+    "update-cache": "python3 scripts/update_github_cache.py"
+  },
+  "keywords": [
+    "wellmanifest",
+    "landing-page",
+    "github-cache",
+    "dependency-graph",
+    "cytoscape"
+  ],
+  "author": "WellManifest Team",
+  "license": "MIT"
+}

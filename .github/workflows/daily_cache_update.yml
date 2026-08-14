@@ -1,0 +1,33 @@
+name: Daily GitHub API Cache Sync
+
+on:
+  schedule:
+    # Run daily at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  update-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Cache Update Script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ORG: 'wellmanifest'
+        run: |
+          python3 scripts/update_github_cache.py
+
+      - name: Commit & Push Updated Cache
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Bot"
+          git add projects_cache.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "auto: Daily GitHub API projects cache update [skip ci]" && git push)
