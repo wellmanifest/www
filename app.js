@@ -45,40 +45,41 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderProjectsGrid();
   renderDependencyMatrix();
   initCytoscapeGraph();
+
+  // Automatic background ticker: check every 60s for 24h expiry & update countdown
+  setInterval(checkAutomaticCacheRefresh, 60000);
 });
 
 /**
- * Load project data with 24h Daily GitHub Cache logic
+ * Load project data with strictly automatic 24h Daily GitHub Cache logic
  */
-async function loadProjectData(forceRefresh = false) {
+async function loadProjectData() {
   const LOCAL_CACHE_KEY = 'wm_github_daily_cache_v1';
   const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 Hours
 
-  updateSyncStatusIndicator('syncing', 'Ładowanie cache...');
+  updateSyncStatusIndicator('syncing', 'Ładowanie automatycznego cache...');
 
   try {
     let cacheData = null;
 
-    if (!forceRefresh) {
-      const stored = localStorage.getItem(LOCAL_CACHE_KEY);
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          const age = Date.now() - new Date(parsed.last_updated).getTime();
-          if (age < CACHE_TTL_MS) {
-            cacheData = parsed;
-            console.log('[Cache] Loading from valid localStorage cache (Age:', Math.round(age / 1000 / 60), 'minutes)');
-          } else {
-            console.log('[Cache] localStorage cache expired (>24h). Fetching fresh daily cache.');
-          }
-        } catch (e) {
-          console.warn('[Cache] Corrupted localStorage cache, clearing.');
+    const stored = localStorage.getItem(LOCAL_CACHE_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        const age = Date.now() - new Date(parsed.last_updated).getTime();
+        if (age < CACHE_TTL_MS) {
+          cacheData = parsed;
+          console.log('[Auto-Cache] Wczytano ważny cache z localStorage (Wiek:', Math.round(age / 1000 / 60), 'minut)');
+        } else {
+          console.log('[Auto-Cache] Cache przekroczył 24h. Automatyczne pobieranie nowego pliku cache...');
         }
+      } catch (e) {
+        console.warn('[Auto-Cache] Uszkodzony localStorage cache, czyszczenie.');
       }
     }
 
     if (!cacheData) {
-      // Fetch bundled projects_cache.json
+      // Fetch bundled projects_cache.json (Updated daily by GitHub Actions)
       const resp = await fetch('projects_cache.json?t=' + Date.now());
       if (!resp.ok) throw new Error('Nie można pobrać pliku projects_cache.json');
       cacheData = await resp.json();
@@ -94,19 +95,57 @@ async function loadProjectData(forceRefresh = false) {
     // Calculate categories and tags
     processTagsAndCategories();
 
-    // Update UI status
-    const updateDate = new Date(appState.cacheInfo.lastUpdated);
-    const timeFormatted = updateDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const dateFormatted = updateDate.toLocaleDateString();
-
-    updateSyncStatusIndicator('success', `Cache z GitHub: ${dateFormatted} ${timeFormatted}`);
+    // Update UI status with 24h auto countdown
+    updateCacheCountdown();
 
     filterProjects();
 
   } catch (err) {
-    console.error('[Error] błąd podczas ładowania danych:', err);
-    updateSyncStatusIndicator('error', 'Błąd ładowania cache');
+    console.error('[Error] błąd podczas automatycznego ładowania cache:', err);
+    updateSyncStatusIndicator('error', 'Błąd auto-cache');
   }
+}
+
+/**
+ * Check if 24h TTL has expired and update countdown text
+ */
+function checkAutomaticCacheRefresh() {
+  const LOCAL_CACHE_KEY = 'wm_github_daily_cache_v1';
+  const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  const stored = localStorage.getItem(LOCAL_CACHE_KEY);
+
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      const age = Date.now() - new Date(parsed.last_updated).getTime();
+      if (age >= CACHE_TTL_MS) {
+        console.log('[Auto-Cache] Minęły 24 godziny! Automatyczne odświeżenie w tle...');
+        localStorage.removeItem(LOCAL_CACHE_KEY);
+        loadProjectData();
+        return;
+      }
+    } catch (e) {}
+  }
+
+  updateCacheCountdown();
+}
+
+/**
+ * Calculate and display countdown until next automatic 24h refresh
+ */
+function updateCacheCountdown() {
+  if (!appState.cacheInfo.lastUpdated) return;
+
+  const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  const lastUpdateMs = new Date(appState.cacheInfo.lastUpdated).getTime();
+  const ageMs = Date.now() - lastUpdateMs;
+  const remainingMs = Math.max(0, CACHE_TTL_MS - ageMs);
+
+  const hoursLeft = Math.floor(remainingMs / (1000 * 60 * 60));
+  const minsLeft = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+
+  const statusMsg = `Auto-Cache GitHub: Następne odświeżenie za ${hoursLeft}h ${minsLeft}m`;
+  updateSyncStatusIndicator('success', statusMsg);
 }
 
 function updateSyncStatusIndicator(type, message) {
@@ -731,10 +770,6 @@ function resetFilters() {
 
   renderTagsCloud();
   filterProjects();
-}
-
-function forceRefreshCache() {
-  loadProjectData(true);
 }
 
 function escapeHtml(str) {

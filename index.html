@@ -51,13 +51,13 @@
       <input type="text" id="search-input" class="search-input" placeholder="Szukaj projektu, zadania, tagu lub modułu... (Ctrl + K)">
     </div>
 
-    <!-- GitHub Daily Cache Status Widget -->
+    <!-- GitHub Daily Cache Status Widget (Automatic 24h Sync) -->
     <div class="cache-status-widget">
       <div id="cache-status-dot" class="status-dot"></div>
-      <span id="cache-status-text">Cache z GitHub API: Inicjalizacja...</span>
-      <button class="btn btn-secondary btn-sm" onclick="forceRefreshCache()" title="Wymuś odświeżenie cache z GitHub API">
-        <i class="fas fa-sync-alt"></i> Odśwież Cache
-      </button>
+      <span id="cache-status-text">Cache GitHub: Auto 24h...</span>
+      <span class="hero-badge" style="margin:0; padding:0.2rem 0.6rem; font-size:0.75rem;">
+        <i class="fas fa-robot"></i> Auto 24h
+      </span>
     </div>
   </header>
 
@@ -81,9 +81,6 @@
           </button>
           <button class="btn btn-secondary" onclick="switchView('grid')">
             <i class="fas fa-th-large"></i> Przeglądaj Karty Projektów
-          </button>
-          <button class="btn btn-secondary" onclick="forceRefreshCache()">
-            <i class="fab fa-github"></i> Odśwież Dane z GitHub API
           </button>
         </div>
 
