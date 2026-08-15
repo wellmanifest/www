@@ -24,6 +24,8 @@ jobs:
           php-version: '8.3'
 
       - name: Run Single-File Static HTML Exporter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: php index.php --export
 
       - name: Commit & Push Updated Static index.html

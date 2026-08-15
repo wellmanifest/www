@@ -86,10 +86,16 @@ if (isset($_GET['api'])) {
 }
 
 function fetchGitHubOrgRepos($orgName) {
+    $token = getenv('GITHUB_TOKEN');
+    $headers = "User-Agent: WebOrg-PHP/1.0\r\n";
+    if ($token) {
+        $headers .= "Authorization: token {$token}\r\n";
+    }
+
     $opts = [
         "http" => [
             "method" => "GET",
-            "header" => "User-Agent: WebOrg-PHP/1.0\r\n",
+            "header" => $headers,
             "ignore_errors" => true
         ]
     ];
