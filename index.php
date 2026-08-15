@@ -144,6 +144,22 @@ function getOrGenerateProjectsCache($orgName, $orgPath, $cacheFile) {
 
     $projects = [];
 
+    // Pobierz prawdziwe statystyki z GitHub REST API
+    $ghStatsMap = [];
+    $apiRepos = fetchGitHubOrgRepos($orgName);
+    foreach ($apiRepos as $repo) {
+        if (!empty($repo['name'])) {
+            $ghStatsMap[$repo['name']] = [
+                'stars' => $repo['stargazers_count'] ?? 0,
+                'forks' => $repo['forks_count'] ?? 0,
+                'issues' => $repo['open_issues_count'] ?? 0,
+                'language' => $repo['language'] ?? 'Python',
+                'description' => $repo['description'] ?? '',
+                'html_url' => $repo['html_url'] ?? "https://github.com/$orgName/{$repo['name']}"
+            ];
+        }
+    }
+
     if (!empty($subdirs)) {
         foreach ($subdirs as $projId) {
             $projPath = $orgPath . '/' . $projId;
@@ -173,6 +189,12 @@ function getOrGenerateProjectsCache($orgName, $orgPath, $cacheFile) {
             if (preg_match('/(lifecycle|state)/i', $projId)) $tags[] = 'lifecycle';
             if (preg_match('/(sec|auth|guard|identity)/i', $projId)) $tags[] = 'security';
 
+            $ghData = $ghStatsMap[$projId] ?? [];
+            $realStars = $ghData['stars'] ?? 0;
+            $realForks = $ghData['forks'] ?? 0;
+            $realIssues = $ghData['issues'] ?? 0;
+            $realLang = $ghData['language'] ?? (preg_match('/(ts|js|web)/i', $projId) ? 'TypeScript' : 'Python');
+
             $projects[$projId] = [
                 'id' => $projId,
                 'name' => (strlen($title) < 45) ? $title : $projId,
@@ -180,10 +202,10 @@ function getOrGenerateProjectsCache($orgName, $orgPath, $cacheFile) {
                 'category' => 'Moduły & Usługi',
                 'tags' => array_values(array_unique($tags)),
                 'status' => 'Aktywny Moduł',
-                'stars' => (strlen($projId) * 11 + 7) % 120 + 15,
-                'forks' => (strlen($projId) * 3 + 2) % 25 + 2,
-                'issues' => strlen($projId) % 4,
-                'language' => preg_match('/(py|nlp|ai)/i', $projId) ? 'Python' : (preg_match('/(ts|js|web)/i', $projId) ? 'TypeScript' : 'Python'),
+                'stars' => $realStars,
+                'forks' => $realForks,
+                'issues' => $realIssues,
+                'language' => $realLang,
                 'owner' => $orgName,
                 'readme' => $readmeContent,
                 'github_url' => "https://github.com/$orgName/$projId",
@@ -193,7 +215,6 @@ function getOrGenerateProjectsCache($orgName, $orgPath, $cacheFile) {
         }
     } else {
         // Fallback do GitHub REST API jeśli brak lokalnych subkatalogów
-        $apiRepos = fetchGitHubOrgRepos($orgName);
         foreach ($apiRepos as $repo) {
             $projId = $repo['name'] ?? '';
             if (!$projId || $projId === 'www') continue;
