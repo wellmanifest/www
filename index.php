@@ -66,6 +66,9 @@ $isCli = (php_sapi_name() === 'cli');
 $isExport = $isCli || (isset($_GET['export']) && $_GET['export'] == '1') || (isset($argv[1]) && in_array($argv[1], ['--export', 'export', '-e', 'build']));
 
 if ($isExport) {
+    if (file_exists($cacheFile)) {
+        @unlink($cacheFile);
+    }
     ob_start();
 }
 
