@@ -17,37 +17,45 @@ $parentDirName = basename(dirname($currentDir));
 $grandParentDir = dirname(dirname($currentDir));
 $baseGithubDir = is_dir($grandParentDir) ? $grandParentDir : dirname(__DIR__);
 
+$invalidOrgs = ['www', 'work', '_actions', '_temp', '_PipelineMapping'];
+
 // 1. Pobierz org z URL jeśli podano
 $selectedOrg = isset($_GET['org']) ? preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['org']) : '';
 
 // 2. Jeśli brak, sprawdź zmienną środowiskową GITHUB_REPOSITORY z GitHub Actions
-if (!$selectedOrg || $selectedOrg === 'www') {
+if (!$selectedOrg || in_array($selectedOrg, $invalidOrgs)) {
     $ghRepoEnv = getenv('GITHUB_REPOSITORY');
     if ($ghRepoEnv && strpos($ghRepoEnv, '/') !== false) {
         $parts = explode('/', $ghRepoEnv);
-        if (!empty($parts[0]) && $parts[0] !== 'www') {
+        if (!empty($parts[0]) && !in_array($parts[0], $invalidOrgs)) {
             $selectedOrg = $parts[0];
         }
     }
 }
 
 // 3. Jeśli nadal brak, sprawdź URL git remote origin
-if (!$selectedOrg || $selectedOrg === 'www') {
+if (!$selectedOrg || in_array($selectedOrg, $invalidOrgs)) {
     $gitRemote = @shell_exec('git remote get-url origin 2>/dev/null');
     if ($gitRemote && preg_match('/[:\/]([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_-]+)(\.git)?/', trim($gitRemote), $matches)) {
-        if (!empty($matches[1]) && $matches[1] !== 'www') {
+        if (!empty($matches[1]) && !in_array($matches[1], $invalidOrgs)) {
             $selectedOrg = $matches[1];
         }
     }
 }
 
 // 4. Jeśli nadal brak, sprawdź katalog nadrzędny
-if (!$selectedOrg || $selectedOrg === 'www') {
-    if ($parentDirName !== 'www' && $parentDirName !== 'work' && $parentDirName !== 'github') {
-        $selectedOrg = $parentDirName;
-    } else {
-        $selectedOrg = 'digitaltwin-run';
+if (!$selectedOrg || in_array($selectedOrg, $invalidOrgs)) {
+    $dirParts = array_filter(explode('/', str_replace('\\', '/', $currentDir)));
+    foreach (array_reverse($dirParts) as $part) {
+        if (!in_array($part, $invalidOrgs) && strpos($part, '_') !== 0 && strpos($part, '.') !== 0) {
+            $selectedOrg = $part;
+            break;
+        }
     }
+}
+
+if (!$selectedOrg || in_array($selectedOrg, $invalidOrgs)) {
+    $selectedOrg = 'wellmanifest'; // Domyślna organizacja
 }
 
 if ($selectedOrg === $parentDirName) {
@@ -258,9 +266,17 @@ $allAvailableOrgs = [];
 if (is_dir($baseGithubDir)) {
     foreach (scandir($baseGithubDir) as $d) {
         if ($d !== '.' && $d !== '..' && strpos($d, '.') !== 0 && is_dir($baseGithubDir . '/' . $d)) {
-            $allAvailableOrgs[] = $d;
+            if (!in_array($d, $invalidOrgs)) {
+                $allAvailableOrgs[] = $d;
+            }
         }
     }
+}
+if (empty($allAvailableOrgs)) {
+    $allAvailableOrgs = ['wellmanifest', 'autogrammar', 'wronai', 'oqlos', 'digitaltwin-run', 'semcod', 'subactor', 'urirun-connectors', 'stream-ware', 'bioxfoundry', 'founder-pl', 'emllm', 'fin-officer', 'tom-sapletta-com'];
+}
+if (!in_array($selectedOrg, $allAvailableOrgs) && !in_array($selectedOrg, $invalidOrgs)) {
+    $allAvailableOrgs[] = $selectedOrg;
 }
 sort($allAvailableOrgs);
 ?>
