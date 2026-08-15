@@ -83,17 +83,25 @@ if (isset($_GET['api'])) {
 }
 
 function fetchGitHubOrgRepos($orgName) {
-    $url = "https://api.github.com/orgs/{$orgName}/repos?per_page=100";
-    $opts = ["http" => ["method" => "GET", "header" => "User-Agent: WebOrg-PHP/1.0\r\n"]];
+    $opts = [
+        "http" => [
+            "method" => "GET",
+            "header" => "User-Agent: WebOrg-PHP/1.0\r\n",
+            "ignore_errors" => true
+        ]
+    ];
     $context = stream_context_create($opts);
+
+    $url = "https://api.github.com/orgs/{$orgName}/repos?per_page=100";
     $json = @file_get_contents($url, false, $context);
-    if (!$json) {
+    $data = json_decode($json, true);
+    if (!is_array($data) || isset($data['message'])) {
         $url = "https://api.github.com/users/{$orgName}/repos?per_page=100";
         $json = @file_get_contents($url, false, $context);
-    }
-    if ($json) {
         $data = json_decode($json, true);
-        if (is_array($data)) return $data;
+    }
+    if (is_array($data) && !isset($data['message'])) {
+        return $data;
     }
     return [];
 }
