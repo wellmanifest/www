@@ -86,16 +86,10 @@ if (isset($_GET['api'])) {
 }
 
 function fetchGitHubOrgRepos($orgName) {
-    $token = getenv('GITHUB_TOKEN');
-    $headers = "User-Agent: WebOrg-PHP/1.0\r\n";
-    if ($token) {
-        $headers .= "Authorization: token {$token}\r\n";
-    }
-
     $opts = [
         "http" => [
             "method" => "GET",
-            "header" => $headers,
+            "header" => "User-Agent: WebOrg-PHP-AutoDiscovery/1.0\r\n",
             "ignore_errors" => true
         ]
     ];
@@ -104,7 +98,7 @@ function fetchGitHubOrgRepos($orgName) {
     $url = "https://api.github.com/orgs/{$orgName}/repos?per_page=100";
     $json = @file_get_contents($url, false, $context);
     $data = json_decode($json, true);
-    if (!is_array($data) || isset($data['message'])) {
+    if (!is_array($data) || isset($data['message']) || count($data) <= 1) {
         $url = "https://api.github.com/users/{$orgName}/repos?per_page=100";
         $json = @file_get_contents($url, false, $context);
         $data = json_decode($json, true);
