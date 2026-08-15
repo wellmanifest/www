@@ -282,20 +282,36 @@ function getOrGenerateProjectsCache($orgName, $orgPath, $cacheFile) {
 
 $cacheData = getOrGenerateProjectsCache($selectedOrg, $orgPath, $cacheFile);
 
-// Pobierz listę wszystkich dostępnych organizacji na serwerze
+// Biała lista wyłącznie aktywnych organizacji posiadających moduł/stronę 'www'
+$knownActiveWwwOrgs = [
+    'autogrammar', 'bioxfoundry', 'digitaltwin-run', 'emllm', 'fin-officer',
+    'founder-pl', 'oqlos', 'semcod', 'stream-ware', 'tom-sapletta-com',
+    'urirun-connectors', 'wellmanifest', 'wronai'
+];
+
 $allAvailableOrgs = [];
 if (is_dir($baseGithubDir)) {
     foreach (scandir($baseGithubDir) as $d) {
-        if ($d !== '.' && $d !== '..' && strpos($d, '.') !== 0 && is_dir($baseGithubDir . '/' . $d)) {
-            if (!in_array($d, $invalidOrgs)) {
-                $allAvailableOrgs[] = $d;
+        if ($d !== '.' && $d !== '..' && strpos($d, '.') !== 0 && !in_array($d, $invalidOrgs)) {
+            $orgDir = $baseGithubDir . '/' . $d;
+            if (is_dir($orgDir)) {
+                // Sprawdź czy organizacja posiada podkatalog 'www' lub plik 'index.php'
+                if (is_dir($orgDir . '/www') || file_exists($orgDir . '/index.php')) {
+                    $allAvailableOrgs[] = $d;
+                }
             }
         }
     }
 }
-if (empty($allAvailableOrgs)) {
-    $allAvailableOrgs = ['wellmanifest', 'autogrammar', 'wronai', 'oqlos', 'digitaltwin-run', 'semcod', 'subactor', 'urirun-connectors', 'stream-ware', 'bioxfoundry', 'founder-pl', 'emllm', 'fin-officer', 'tom-sapletta-com'];
+
+if (!empty($allAvailableOrgs)) {
+    $allAvailableOrgs = array_values(array_intersect($allAvailableOrgs, $knownActiveWwwOrgs));
 }
+
+if (empty($allAvailableOrgs)) {
+    $allAvailableOrgs = $knownActiveWwwOrgs;
+}
+
 if (!in_array($selectedOrg, $allAvailableOrgs) && !in_array($selectedOrg, $invalidOrgs)) {
     $allAvailableOrgs[] = $selectedOrg;
 }
