@@ -1,189 +1,9 @@
-<?php
-/**
- * WebOrg — Uniwersalny, Reużywalny Portal Landing Page dla Organizacji GitHub
- * Edycja Jednoplikowa (Single-File index.php Engine)
- *
- * Wystarczy umieścić ten plik w dowolnym katalogu organizacji lub uruchomić:
- * php -S localhost:8000 index.php
- */
-
-error_reporting(E_ALL & ~E_NOTICE);
-
-// Status Cache TTL: 24 Godziny (86400 sekund)
-define('CACHE_TTL', 86400);
-
-$baseGithubDir = dirname(__DIR__); // /home/tom/github
-$currentDir = __DIR__;
-$currentOrgName = basename(dirname($currentDir));
-
-// Pobierz parametry z URL
-$selectedOrg = isset($_GET['org']) ? preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['org']) : '';
-if (!$selectedOrg || !is_dir($baseGithubDir . '/' . $selectedOrg)) {
-    // Sprawdź czy bieżący katalog rodzica to organizacja
-    if (basename($currentDir) === 'www' && is_dir(dirname($currentDir))) {
-        $selectedOrg = basename(dirname($currentDir));
-    } else {
-        $selectedOrg = 'wellmanifest'; // Domyślna organizacja
-    }
-}
-
-$orgPath = $baseGithubDir . '/' . $selectedOrg;
-if (!is_dir($orgPath)) {
-    $orgPath = $currentDir;
-}
-
-$cacheFile = $currentDir . '/cache_' . $selectedOrg . '.json';
-
-// --- PLESK / CLI DAILY STATIC EXPORT MODE ---
-$isCli = (php_sapi_name() === 'cli');
-$isExport = $isCli || (isset($_GET['export']) && $_GET['export'] == '1') || (isset($argv[1]) && in_array($argv[1], ['--export', 'export', '-e', 'build']));
-
-if ($isExport) {
-    ob_start();
-}
-
-// --- API HANDLING ---
-if (isset($_GET['api'])) {
-    header('Content-Type: application/json; charset=utf-8');
-    if ($_GET['api'] === 'cache') {
-        if (file_exists($cacheFile)) {
-            echo file_get_contents($cacheFile);
-        } else {
-            echo json_encode(['error' => 'Cache missing']);
-        }
-        exit;
-    }
-}
-
-// --- FUNKCJA AUTOMATYCZNEGO ODKRYWANIA REPOZYTORIÓW I CACHE ---
-function getOrGenerateProjectsCache($orgName, $orgPath, $cacheFile) {
-    if (file_exists($cacheFile)) {
-        $age = time() - filemtime($cacheFile);
-        if ($age < CACHE_TTL) {
-            $json = file_get_contents($cacheFile);
-            $data = json_decode($json, true);
-            if ($data && isset($data['projects'])) {
-                return $data;
-            }
-        }
-    }
-
-    // Automatyczne skanowanie katalogu organizacji
-    $subdirs = [];
-    if (is_dir($orgPath)) {
-        $scan = scandir($orgPath);
-        foreach ($scan as $item) {
-            if ($item === '.' || $item === '..' || $item === 'www' || strpos($item, '.') === 0) continue;
-            if (is_dir($orgPath . '/' . $item)) {
-                $subdirs[] = $item;
-            }
-        }
-    }
-
-    $projects = [];
-    foreach ($subdirs as $projId) {
-        $projPath = $orgPath . '/' . $projId;
-        $readmeFile = $projPath . '/README.md';
-        $readmeContent = file_exists($readmeFile) ? file_get_contents($readmeFile) : '';
-
-        // Parsowanie nagłówka i opisu
-        $lines = array_filter(array_map('trim', explode("\n", $readmeContent)));
-        $title = !empty($lines) ? trim(str_replace('#', '', reset($lines))) : $projId;
-        
-        $desc = '';
-        foreach (array_slice($lines, 1, 6) as $l) {
-            if (strpos($l, '#') !== 0 && strpos($l, '![') !== 0 && strlen($l) > 10) {
-                $desc = $l;
-                break;
-            }
-        }
-        if (!$desc) {
-            $desc = "Moduł $projId — komponent wykonawczy i automatyzacyjny w ekosystemie $orgName.";
-        }
-
-        // Generowanie tagów
-        $tags = [$orgName, 'module'];
-        if (preg_match('/(connector|adapter|link)/i', $projId)) $tags[] = 'connector';
-        if (preg_match('/(nlp|llm|ai|agent)/i', $projId)) $tags[] = 'ai';
-        if (preg_match('/(dsl|grammar|schema|parser)/i', $projId)) $tags[] = 'dsl';
-        if (preg_match('/(uri|url|route)/i', $projId)) $tags[] = 'uri';
-        if (preg_match('/(stream|event|queue)/i', $projId)) $tags[] = 'stream';
-        if (preg_match('/(lifecycle|state)/i', $projId)) $tags[] = 'lifecycle';
-        if (preg_match('/(sec|auth|guard|identity)/i', $projId)) $tags[] = 'security';
-
-        $projects[$projId] = [
-            'id' => $projId,
-            'name' => (strlen($title) < 45) ? $title : $projId,
-            'task' => $desc,
-            'category' => 'Moduły & Usługi',
-            'tags' => array_values(array_unique($tags)),
-            'status' => 'Aktywny Moduł',
-            'stars' => (strlen($projId) * 11 + 7) % 120 + 15,
-            'forks' => (strlen($projId) * 3 + 2) % 25 + 2,
-            'issues' => strlen($projId) % 4,
-            'language' => preg_match('/(py|nlp|ai)/i', $projId) ? 'Python' : (preg_match('/(ts|js|web)/i', $projId) ? 'TypeScript' : 'Python'),
-            'owner' => $orgName,
-            'readme' => $readmeContent,
-            'github_url' => "https://github me/$orgName/$projId",
-            'dependencies' => [],
-            'used_by' => []
-        ];
-    }
-
-    // Wykrywanie relacji zależności
-    foreach ($projects as $pId => &$pData) {
-        $deps = [];
-        $textLower = mb_strtolower($pData['readme']);
-        foreach ($projects as $otherId => $otherData) {
-            if ($otherId !== $pId && strpos($textLower, mb_strtolower($otherId)) !== false) {
-                $deps[] = $otherId;
-            }
-        }
-        $pData['dependencies'] = $deps;
-    }
-    unset($pData);
-
-    // Wyliczanie zależnych (used_by)
-    foreach ($projects as $pId => $pData) {
-        foreach ($pData['dependencies'] as $depId) {
-            if (isset($projects[$depId])) {
-                $projects[$depId]['used_by'][] = $pId;
-            }
-        }
-    }
-
-    $cacheData = [
-        'version' => '1.0.0',
-        'last_updated' => date('c'),
-        'cache_ttl_hours' => 24,
-        'source' => "PHP Single-File Auto-Discovery Engine ($orgName)",
-        'total_projects' => count($projects),
-        'projects' => $projects
-    ];
-
-    @file_put_contents($cacheFile, json_encode($cacheData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-    return $cacheData;
-}
-
-$cacheData = getOrGenerateProjectsCache($selectedOrg, $orgPath, $cacheFile);
-
-// Pobierz listę wszystkich dostępnych organizacji na serwerze
-$allAvailableOrgs = [];
-if (is_dir($baseGithubDir)) {
-    foreach (scandir($baseGithubDir) as $d) {
-        if ($d !== '.' && $d !== '..' && strpos($d, '.') !== 0 && is_dir($baseGithubDir . '/' . $d)) {
-            $allAvailableOrgs[] = $d;
-        }
-    }
-}
-sort($allAvailableOrgs);
-?>
 <!DOCTYPE html>
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebOrg — <?php echo htmlspecialchars(strtoupper($selectedOrg)); ?> Hub Projektów</title>
+  <title>WebOrg — WELLMANIFEST Hub Projektów</title>
   <meta name="description" content="Uniwersalny, jednoplikowy portal landing page dla organizacji GitHub z automatycznym 24h cache, diagramem zależności i podglądem zadań.">
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -307,12 +127,67 @@ sort($allAvailableOrgs);
     <div style="display:flex; align-items:center; gap:0.5rem;">
       <span style="font-size:0.85rem; color:var(--text-muted);"><i class="fas fa-sitemap"></i> Organizacja:</span>
       <select class="org-selector-select" onchange="location.href='?org=' + this.value">
-        <?php foreach ($allAvailableOrgs as $org): ?>
-          <option value="<?php echo htmlspecialchars($org); ?>" <?php echo $org === $selectedOrg ? 'selected' : ''; ?>>
-            <?php echo htmlspecialchars(strtoupper($org)); ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
+                  <option value="account-runtime" >
+            ACCOUNT-RUNTIME          </option>
+                  <option value="agent" >
+            AGENT          </option>
+                  <option value="authority-lifecycle" >
+            AUTHORITY-LIFECYCLE          </option>
+                  <option value="autonomy" >
+            AUTONOMY          </option>
+                  <option value="code-dsl" >
+            CODE-DSL          </option>
+                  <option value="deployment" >
+            DEPLOYMENT          </option>
+                  <option value="dsl" >
+            DSL          </option>
+                  <option value="env-dsl" >
+            ENV-DSL          </option>
+                  <option value="git-lifecycle" >
+            GIT-LIFECYCLE          </option>
+                  <option value="hostguard" >
+            HOSTGUARD          </option>
+                  <option value="landing-page" >
+            LANDING-PAGE          </option>
+                  <option value="legal-lifecycle" >
+            LEGAL-LIFECYCLE          </option>
+                  <option value="lifecycle" >
+            LIFECYCLE          </option>
+                  <option value="logs" >
+            LOGS          </option>
+                  <option value="merge" >
+            MERGE          </option>
+                  <option value="modularity" >
+            MODULARITY          </option>
+                  <option value="new-project" >
+            NEW-PROJECT          </option>
+                  <option value="performance" >
+            PERFORMANCE          </option>
+                  <option value="poa" >
+            POA          </option>
+                  <option value="policy-dsl" >
+            POLICY-DSL          </option>
+                  <option value="product-lifecycle" >
+            PRODUCT-LIFECYCLE          </option>
+                  <option value="project-ssot" >
+            PROJECT-SSOT          </option>
+                  <option value="repair-lifecycle" >
+            REPAIR-LIFECYCLE          </option>
+                  <option value="saas-lifecycle" >
+            SAAS-LIFECYCLE          </option>
+                  <option value="ssot" >
+            SSOT          </option>
+                  <option value="ticket-lifecycle" >
+            TICKET-LIFECYCLE          </option>
+                  <option value="twin-lifecycle" >
+            TWIN-LIFECYCLE          </option>
+                  <option value="validation-attestation" >
+            VALIDATION-ATTESTATION          </option>
+                  <option value="wellm" >
+            WELLM          </option>
+                  <option value="www" >
+            WWW          </option>
+              </select>
     </div>
 
     <!-- Live Search Box -->
@@ -337,9 +212,9 @@ sort($allAvailableOrgs);
         <div style="display:inline-flex; align-items:center; gap:0.5rem; padding:0.35rem 0.9rem; background:rgba(99,102,241,0.15); border:1px solid rgba(99,102,241,0.3); border-radius:20px; color:var(--accent-indigo); font-size:0.82rem; font-weight:600; margin-bottom:1rem;">
           <i class="fas fa-server"></i> Single-File Reusable Engine (PHP 8.4)
         </div>
-        <h1 class="hero-title">Organizacja: <span class="gradient-text"><?php echo htmlspecialchars(strtoupper($selectedOrg)); ?></span></h1>
+        <h1 class="hero-title">Organizacja: <span class="gradient-text">WELLMANIFEST</span></h1>
         <p class="hero-desc">
-          Uniwersalny, zcentralizowany hub projektów dla <strong><?php echo count($cacheData['projects']); ?> modułów</strong> w ekosystemie <code><?php echo htmlspecialchars($selectedOrg); ?></code>. Automatyczne odliczanie 24h, opisy zadań, tagi i diagram zależności.
+          Uniwersalny, zcentralizowany hub projektów dla <strong>0 modułów</strong> w ekosystemie <code>wellmanifest</code>. Automatyczne odliczanie 24h, opisy zadań, tagi i diagram zależności.
         </p>
 
         <div style="display:flex; gap:1rem; flex-wrap:wrap;">
@@ -350,7 +225,7 @@ sort($allAvailableOrgs);
         <!-- Metrics Grid -->
         <div class="metrics-grid">
           <div class="metric-card">
-            <div class="metric-value gradient-text" id="metric-total-repos"><?php echo count($cacheData['projects']); ?></div>
+            <div class="metric-value gradient-text" id="metric-total-repos">0</div>
             <div class="metric-label">Projektów / Modułów</div>
           </div>
           <div class="metric-card">
@@ -434,7 +309,7 @@ sort($allAvailableOrgs);
 
   <!-- Embedded Client Logic -->
   <script>
-    const SERVER_DATA = <?php echo json_encode($cacheData, JSON_UNESCAPED_UNICODE); ?>;
+    const SERVER_DATA = {"version":"1.0.0","last_updated":"2026-08-15T12:15:50+00:00","cache_ttl_hours":24,"source":"PHP Single-File Auto-Discovery Engine (wellmanifest)","total_projects":0,"projects":[]};
 
     let appState = {
       projects: SERVER_DATA.projects || {},
@@ -645,17 +520,3 @@ sort($allAvailableOrgs);
   </script>
 </body>
 </html>
-<?php
-if ($isExport) {
-    $htmlOutput = ob_get_clean();
-    $exportHtmlFile = $currentDir . '/index.html';
-    file_put_contents($exportHtmlFile, $htmlOutput);
-    if ($isCli) {
-        echo "[Plesk Daily Export] Wygenerowano plik statyczny index.html dla organizacji '{$selectedOrg}' (" . round(strlen($htmlOutput) / 1024) . " KB)\n";
-        exit(0);
-    } else {
-        echo $htmlOutput;
-        exit(0);
-    }
-}
-?>
