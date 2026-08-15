@@ -93,28 +93,68 @@ if (isset($_GET['api'])) {
     }
 }
 
-function fetchGitHubOrgRepos($orgName) {
+function httpGetJson($url) {
+    $token = getenv('GITHUB_TOKEN');
+    $userAgent = 'WebOrg-PHP-AutoDiscovery/1.0';
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_USERAGENT, $userAgent);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        $headers = [];
+        if ($token) {
+            $headers[] = "Authorization: token {$token}";
+        }
+        if (!empty($headers)) {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        }
+        $res = curl_exec($ch);
+        curl_close($ch);
+        if ($res) {
+            $data = json_decode($res, true);
+            if (is_array($data)) return $data;
+        }
+    }
+
+    $headerStr = "User-Agent: {$userAgent}\r\n";
+    if ($token) {
+        $headerStr .= "Authorization: token {$token}\r\n";
+    }
     $opts = [
         "http" => [
             "method" => "GET",
-            "header" => "User-Agent: WebOrg-PHP-AutoDiscovery/1.0\r\n",
-            "ignore_errors" => true
+            "header" => $headerStr,
+            "ignore_errors" => true,
+            "timeout" => 15
+        ],
+        "ssl" => [
+            "verify_peer" => false,
+            "verify_peer_name" => false
         ]
     ];
     $context = stream_context_create($opts);
-
-    $url = "https://api.github.com/orgs/{$orgName}/repos?per_page=100";
     $json = @file_get_contents($url, false, $context);
-    $data = json_decode($json, true);
-    if (!is_array($data) || isset($data['message']) || count($data) <= 1) {
-        $url = "https://api.github.com/users/{$orgName}/repos?per_page=100";
-        $json = @file_get_contents($url, false, $context);
+    if ($json) {
         $data = json_decode($json, true);
+        if (is_array($data)) return $data;
     }
-    if (is_array($data) && !isset($data['message'])) {
+    return null;
+}
+
+function fetchGitHubOrgRepos($orgName) {
+    $data = httpGetJson("https://api.github.com/orgs/{$orgName}/repos?per_page=100");
+    if (is_array($data) && !isset($data['message']) && count($data) > 1) {
         return $data;
     }
-    return [];
+    $dataUser = httpGetJson("https://api.github.com/users/{$orgName}/repos?per_page=100");
+    if (is_array($dataUser) && !isset($dataUser['message']) && count($dataUser) > 0) {
+        return $dataUser;
+    }
+    return is_array($data) && !isset($data['message']) ? $data : [];
 }
 
 // --- FUNKCJA AUTOMATYCZNEGO ODKRYWANIA REPOZYTORIÓW I CACHE ---
