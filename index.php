@@ -17,11 +17,34 @@ $parentDirName = basename(dirname($currentDir));
 $grandParentDir = dirname(dirname($currentDir));
 $baseGithubDir = is_dir($grandParentDir) ? $grandParentDir : dirname(__DIR__);
 
-// Pobierz parametry z URL
+// 1. Pobierz org z URL jeśli podano
 $selectedOrg = isset($_GET['org']) ? preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['org']) : '';
-if (!$selectedOrg) {
-    if (basename($currentDir) === 'www' && is_dir(dirname($currentDir))) {
-        $selectedOrg = basename(dirname($currentDir));
+
+// 2. Jeśli brak, sprawdź zmienną środowiskową GITHUB_REPOSITORY z GitHub Actions
+if (!$selectedOrg || $selectedOrg === 'www') {
+    $ghRepoEnv = getenv('GITHUB_REPOSITORY');
+    if ($ghRepoEnv && strpos($ghRepoEnv, '/') !== false) {
+        $parts = explode('/', $ghRepoEnv);
+        if (!empty($parts[0]) && $parts[0] !== 'www') {
+            $selectedOrg = $parts[0];
+        }
+    }
+}
+
+// 3. Jeśli nadal brak, sprawdź URL git remote origin
+if (!$selectedOrg || $selectedOrg === 'www') {
+    $gitRemote = @shell_exec('git remote get-url origin 2>/dev/null');
+    if ($gitRemote && preg_match('/[:\/]([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_-]+)(\.git)?/', trim($gitRemote), $matches)) {
+        if (!empty($matches[1]) && $matches[1] !== 'www') {
+            $selectedOrg = $matches[1];
+        }
+    }
+}
+
+// 4. Jeśli nadal brak, sprawdź katalog nadrzędny
+if (!$selectedOrg || $selectedOrg === 'www') {
+    if ($parentDirName !== 'www' && $parentDirName !== 'work' && $parentDirName !== 'github') {
+        $selectedOrg = $parentDirName;
     } else {
         $selectedOrg = 'digitaltwin-run';
     }
