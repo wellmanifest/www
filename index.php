@@ -12,22 +12,26 @@ error_reporting(E_ALL & ~E_NOTICE);
 // Status Cache TTL: 24 Godziny (86400 sekund)
 define('CACHE_TTL', 86400);
 
-$baseGithubDir = dirname(__DIR__); // /home/tom/github
 $currentDir = __DIR__;
-$currentOrgName = basename(dirname($currentDir));
+$parentDirName = basename(dirname($currentDir));
+$grandParentDir = dirname(dirname($currentDir));
+$baseGithubDir = is_dir($grandParentDir) ? $grandParentDir : dirname(__DIR__);
 
 // Pobierz parametry z URL
 $selectedOrg = isset($_GET['org']) ? preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['org']) : '';
-if (!$selectedOrg || !is_dir($baseGithubDir . '/' . $selectedOrg)) {
-    // Sprawdź czy bieżący katalog rodzica to organizacja
+if (!$selectedOrg) {
     if (basename($currentDir) === 'www' && is_dir(dirname($currentDir))) {
         $selectedOrg = basename(dirname($currentDir));
     } else {
-        $selectedOrg = 'wellmanifest'; // Domyślna organizacja
+        $selectedOrg = 'digitaltwin-run';
     }
 }
 
-$orgPath = $baseGithubDir . '/' . $selectedOrg;
+if ($selectedOrg === $parentDirName) {
+    $orgPath = dirname($currentDir);
+} else {
+    $orgPath = $baseGithubDir . '/' . $selectedOrg;
+}
 if (!is_dir($orgPath)) {
     $orgPath = $currentDir;
 }
@@ -55,6 +59,22 @@ if (isset($_GET['api'])) {
     }
 }
 
+function fetchGitHubOrgRepos($orgName) {
+    $url = "https://api.github.com/orgs/{$orgName}/repos?per_page=100";
+    $opts = ["http" => ["method" => "GET", "header" => "User-Agent: WebOrg-PHP/1.0\r\n"]];
+    $context = stream_context_create($opts);
+    $json = @file_get_contents($url, false, $context);
+    if (!$json) {
+        $url = "https://api.github.com/users/{$orgName}/repos?per_page=100";
+        $json = @file_get_contents($url, false, $context);
+    }
+    if ($json) {
+        $data = json_decode($json, true);
+        if (is_array($data)) return $data;
+    }
+    return [];
+}
+
 // --- FUNKCJA AUTOMATYCZNEGO ODKRYWANIA REPOZYTORIÓW I CACHE ---
 function getOrGenerateProjectsCache($orgName, $orgPath, $cacheFile) {
     if (file_exists($cacheFile)) {
@@ -62,7 +82,7 @@ function getOrGenerateProjectsCache($orgName, $orgPath, $cacheFile) {
         if ($age < CACHE_TTL) {
             $json = file_get_contents($cacheFile);
             $data = json_decode($json, true);
-            if ($data && isset($data['projects'])) {
+            if ($data && isset($data['projects']) && count($data['projects']) > 0) {
                 return $data;
             }
         }
@@ -81,53 +101,85 @@ function getOrGenerateProjectsCache($orgName, $orgPath, $cacheFile) {
     }
 
     $projects = [];
-    foreach ($subdirs as $projId) {
-        $projPath = $orgPath . '/' . $projId;
-        $readmeFile = $projPath . '/README.md';
-        $readmeContent = file_exists($readmeFile) ? file_get_contents($readmeFile) : '';
 
-        // Parsowanie nagłówka i opisu
-        $lines = array_filter(array_map('trim', explode("\n", $readmeContent)));
-        $title = !empty($lines) ? trim(str_replace('#', '', reset($lines))) : $projId;
-        
-        $desc = '';
-        foreach (array_slice($lines, 1, 6) as $l) {
-            if (strpos($l, '#') !== 0 && strpos($l, '![') !== 0 && strlen($l) > 10) {
-                $desc = $l;
-                break;
+    if (!empty($subdirs)) {
+        foreach ($subdirs as $projId) {
+            $projPath = $orgPath . '/' . $projId;
+            $readmeFile = $projPath . '/README.md';
+            $readmeContent = file_exists($readmeFile) ? file_get_contents($readmeFile) : '';
+
+            $lines = array_filter(array_map('trim', explode("\n", $readmeContent)));
+            $title = !empty($lines) ? trim(str_replace('#', '', reset($lines))) : $projId;
+            
+            $desc = '';
+            foreach (array_slice($lines, 1, 6) as $l) {
+                if (strpos($l, '#') !== 0 && strpos($l, '![') !== 0 && strlen($l) > 10) {
+                    $desc = $l;
+                    break;
+                }
             }
-        }
-        if (!$desc) {
-            $desc = "Moduł $projId — komponent wykonawczy i automatyzacyjny w ekosystemie $orgName.";
-        }
+            if (!$desc) {
+                $desc = "Moduł $projId — komponent wykonawczy i automatyzacyjny w ekosystemie $orgName.";
+            }
 
-        // Generowanie tagów
-        $tags = [$orgName, 'module'];
-        if (preg_match('/(connector|adapter|link)/i', $projId)) $tags[] = 'connector';
-        if (preg_match('/(nlp|llm|ai|agent)/i', $projId)) $tags[] = 'ai';
-        if (preg_match('/(dsl|grammar|schema|parser)/i', $projId)) $tags[] = 'dsl';
-        if (preg_match('/(uri|url|route)/i', $projId)) $tags[] = 'uri';
-        if (preg_match('/(stream|event|queue)/i', $projId)) $tags[] = 'stream';
-        if (preg_match('/(lifecycle|state)/i', $projId)) $tags[] = 'lifecycle';
-        if (preg_match('/(sec|auth|guard|identity)/i', $projId)) $tags[] = 'security';
+            $tags = [$orgName, 'module'];
+            if (preg_match('/(connector|adapter|link)/i', $projId)) $tags[] = 'connector';
+            if (preg_match('/(nlp|llm|ai|agent)/i', $projId)) $tags[] = 'ai';
+            if (preg_match('/(dsl|grammar|schema|parser)/i', $projId)) $tags[] = 'dsl';
+            if (preg_match('/(uri|url|route)/i', $projId)) $tags[] = 'uri';
+            if (preg_match('/(stream|event|queue)/i', $projId)) $tags[] = 'stream';
+            if (preg_match('/(lifecycle|state)/i', $projId)) $tags[] = 'lifecycle';
+            if (preg_match('/(sec|auth|guard|identity)/i', $projId)) $tags[] = 'security';
 
-        $projects[$projId] = [
-            'id' => $projId,
-            'name' => (strlen($title) < 45) ? $title : $projId,
-            'task' => $desc,
-            'category' => 'Moduły & Usługi',
-            'tags' => array_values(array_unique($tags)),
-            'status' => 'Aktywny Moduł',
-            'stars' => (strlen($projId) * 11 + 7) % 120 + 15,
-            'forks' => (strlen($projId) * 3 + 2) % 25 + 2,
-            'issues' => strlen($projId) % 4,
-            'language' => preg_match('/(py|nlp|ai)/i', $projId) ? 'Python' : (preg_match('/(ts|js|web)/i', $projId) ? 'TypeScript' : 'Python'),
-            'owner' => $orgName,
-            'readme' => $readmeContent,
-            'github_url' => "https://github me/$orgName/$projId",
-            'dependencies' => [],
-            'used_by' => []
-        ];
+            $projects[$projId] = [
+                'id' => $projId,
+                'name' => (strlen($title) < 45) ? $title : $projId,
+                'task' => $desc,
+                'category' => 'Moduły & Usługi',
+                'tags' => array_values(array_unique($tags)),
+                'status' => 'Aktywny Moduł',
+                'stars' => (strlen($projId) * 11 + 7) % 120 + 15,
+                'forks' => (strlen($projId) * 3 + 2) % 25 + 2,
+                'issues' => strlen($projId) % 4,
+                'language' => preg_match('/(py|nlp|ai)/i', $projId) ? 'Python' : (preg_match('/(ts|js|web)/i', $projId) ? 'TypeScript' : 'Python'),
+                'owner' => $orgName,
+                'readme' => $readmeContent,
+                'github_url' => "https://github.com/$orgName/$projId",
+                'dependencies' => [],
+                'used_by' => []
+            ];
+        }
+    } else {
+        // Fallback do GitHub REST API jeśli brak lokalnych subkatalogów
+        $apiRepos = fetchGitHubOrgRepos($orgName);
+        foreach ($apiRepos as $repo) {
+            $projId = $repo['name'] ?? '';
+            if (!$projId || $projId === 'www') continue;
+
+            $desc = $repo['description'] ?? "Moduł $projId w ekosystemie $orgName.";
+            $tags = [$orgName, 'module'];
+            if (preg_match('/(connector|adapter|link)/i', $projId)) $tags[] = 'connector';
+            if (preg_match('/(nlp|llm|ai|agent)/i', $projId)) $tags[] = 'ai';
+            if (preg_match('/(dsl|grammar|schema|parser)/i', $projId)) $tags[] = 'dsl';
+
+            $projects[$projId] = [
+                'id' => $projId,
+                'name' => $projId,
+                'task' => $desc,
+                'category' => 'Moduły & Usługi',
+                'tags' => array_values(array_unique($tags)),
+                'status' => 'Aktywny Moduł',
+                'stars' => $repo['stargazers_count'] ?? 0,
+                'forks' => $repo['forks_count'] ?? 0,
+                'issues' => $repo['open_issues_count'] ?? 0,
+                'language' => $repo['language'] ?? 'Python',
+                'owner' => $orgName,
+                'readme' => "# $projId\n\n$desc\n\n[Kod na GitHub]({$repo['html_url']})",
+                'github_url' => $repo['html_url'] ?? "https://github.com/$orgName/$projId",
+                'dependencies' => [],
+                'used_by' => []
+            ];
+        }
     }
 
     // Wykrywanie relacji zależności
