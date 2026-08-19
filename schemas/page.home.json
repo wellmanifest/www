@@ -1,0 +1,35 @@
+{
+  "schema": "wellmanifest.gui/page/v1",
+  "$schema": "https://wellmanifest.com/schemas/gui-page/v1",
+  "id": "wellmanifest.www/home",
+  "version": "1.0.0",
+  "title": "WebOrg — WELLMANIFEST Hub Projektów",
+  "placement": {
+    "home": "wellmanifest",
+    "shape": "domain_pack",
+    "adopt": "wellmanifest/gui",
+    "runtimeOwner": "wellmanifest"
+  },
+  "page": {
+    "kind": "landing",
+    "role": "public",
+    "source": "declared",
+    "url": "https://www.wellmanifest.com/",
+    "family": "marketing"
+  },
+  "structure": {
+    "landmarks": {
+      "main": true,
+      "footer": false,
+      "h1": "WebOrg",
+      "form": false,
+      "article": false,
+      "listing": true
+    }
+  },
+  "appliesPrinciples": [
+    "page-kind",
+    "site-footer",
+    "visual-budget"
+  ]
+}
